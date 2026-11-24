@@ -35,16 +35,28 @@ API via load balancer: http://localhost:8000 — UI: http://localhost:8501
 
 ## Load test (Locust)
 ```bash
+# Start with the one-container stack from the Docker section above
 locust -f locust/locustfile.py --host http://localhost:8000 -u 100 -r 10 -t 60s --headless --csv results_1container
-```
-Repeat after `docker compose up --scale api=2`, `=3`, renaming the CSV each time.
 
-### Flood simulation results (fill in from your CSVs)
+docker compose up -d --scale api=2
+docker compose restart lb
+locust -f locust/locustfile.py --host http://localhost:8000 -u 100 -r 10 -t 60s --headless --csv results_2containers
+
+docker compose up -d --scale api=3
+docker compose restart lb
+locust -f locust/locustfile.py --host http://localhost:8000 -u 100 -r 10 -t 60s --headless --csv results_3containers
+```
+
+For the live charts, run the same Locust command without `--headless` or `--csv`, then open http://localhost:8089.
+
+### Flood simulation results (laptop run)
 | Containers | Users | RPS | Median (ms) | 95th % (ms) | Failures |
 |---|---|---|---|---|---|
-| 1 | 100 | | | | |
-| 2 | 100 | | | | |
-| 3 | 100 | | | | |
+| 1 | 100 | 0.89 | 40,000 | 48,000 | 1 |
+| 2 | 100 | 2.01 | 26,000 | 41,000 | 14 |
+| 3 | 100 | 3.54 | 19,000 | 35,000 | 5 |
+
+These runs were performed on a laptop, where the containers share CPU resources. Throughput increased with the container count in this run, but response times were high and Locust reported connection resets; treat these results as a local demonstration, not a cloud performance benchmark.
 
 ## Cloud deployment
 Push the image to a registry and run the compose stack on a VM (e.g., AWS EC2 / Azure VM / GCP Compute Engine), or use
