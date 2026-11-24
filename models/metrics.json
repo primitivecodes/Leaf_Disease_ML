@@ -1,0 +1,80 @@
+{
+  "accuracy": 0.8409893992932862,
+  "precision": 0.8426825366872487,
+  "recall": 0.8409893992932862,
+  "f1": 0.8342445813928441,
+  "loss": 0.4437433183193207,
+  "confusion_matrix": [
+    [
+      45,
+      6,
+      11,
+      12
+    ],
+    [
+      6,
+      61,
+      1,
+      1
+    ],
+    [
+      2,
+      4,
+      65,
+      2
+    ],
+    [
+      0,
+      0,
+      0,
+      67
+    ]
+  ],
+  "report": {
+    "Tomato___Early_blight": {
+      "precision": 0.8490566037735849,
+      "recall": 0.6081081081081081,
+      "f1-score": 0.7086614173228346,
+      "support": 74.0
+    },
+    "Tomato___Late_blight": {
+      "precision": 0.8591549295774648,
+      "recall": 0.8840579710144928,
+      "f1-score": 0.8714285714285714,
+      "support": 69.0
+    },
+    "Tomato___Leaf_Mold": {
+      "precision": 0.8441558441558441,
+      "recall": 0.8904109589041096,
+      "f1-score": 0.8666666666666667,
+      "support": 73.0
+    },
+    "Tomato___healthy": {
+      "precision": 0.8170731707317073,
+      "recall": 1.0,
+      "f1-score": 0.8993288590604027,
+      "support": 67.0
+    },
+    "accuracy": 0.8409893992932862,
+    "macro avg": {
+      "precision": 0.8423601370596502,
+      "recall": 0.8456442595066777,
+      "f1-score": 0.8365213786196188,
+      "support": 283.0
+    },
+    "weighted avg": {
+      "precision": 0.8426825366872487,
+      "recall": 0.8409893992932862,
+      "f1-score": 0.8342445813928441,
+      "support": 283.0
+    }
+  },
+  "classes": [
+    "Tomato___Early_blight",
+    "Tomato___Late_blight",
+    "Tomato___Leaf_Mold",
+    "Tomato___healthy"
+  ],
+  "trained_at": "2026-11-24 18:32:56",
+  "new_images_merged": 0
+}
