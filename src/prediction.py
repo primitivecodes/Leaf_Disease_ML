@@ -3,7 +3,7 @@ import json, os
 import numpy as np
 import tensorflow as tf
 from src.preprocessing import preprocess_bytes
-from src.model import MODEL_PATH, CLASSES_PATH
+from src.model import MODEL_PATH, CLASSES_PATH, classify_probabilities
 
 _cache = {"mtime": None, "model": None, "names": None}
 
@@ -18,6 +18,6 @@ def _load():
 def predict(image_bytes: bytes):
     model, names = _load()
     probs = model.predict(preprocess_bytes(image_bytes), verbose=0)[0]
-    i = int(np.argmax(probs))
+    i = int(classify_probabilities(probs.reshape(1, -1), names)[0])
     return {"label": names[i], "confidence": float(probs[i]),
             "probabilities": {n: float(p) for n, p in zip(names, probs)}}

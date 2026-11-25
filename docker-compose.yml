@@ -2,7 +2,10 @@ services:
   api:
     build: .
     volumes: ["./data:/app/data", "./models:/app/models"]
-    environment: [RETRAIN_THRESHOLD=50]
+    environment:
+      RETRAIN_THRESHOLD: "50"
+      TF_NUM_INTRAOP_THREADS: "1"
+      TF_NUM_INTEROP_THREADS: "1"
     expose: ["8000"]
   lb:
     image: nginx:alpine

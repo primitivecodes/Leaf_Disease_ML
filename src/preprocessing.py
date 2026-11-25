@@ -1,8 +1,6 @@
 """Data processing: loading, augmentation, single-image preprocessing, merging uploaded data."""
-import io, os, shutil
-import numpy as np
+import os, shutil
 import tensorflow as tf
-from PIL import Image
 
 IMG_SIZE = (160, 160)
 BATCH = 32
@@ -30,8 +28,9 @@ def augmentation():
 
 def preprocess_bytes(data: bytes):
     """Raw image bytes -> model-ready batch (1, H, W, 3). Scaling is done inside the model."""
-    img = Image.open(io.BytesIO(data)).convert("RGB").resize(IMG_SIZE)
-    return np.expand_dims(np.array(img, dtype="float32"), 0)
+    img = tf.io.decode_image(data, channels=3, expand_animations=False)
+    img = tf.image.resize(img, IMG_SIZE, method="bilinear")
+    return tf.expand_dims(img, 0).numpy()
 
 def count_images(folder):
     out = {}

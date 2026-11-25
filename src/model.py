@@ -9,6 +9,16 @@ from src.preprocessing import get_datasets, augmentation, merge_uploads, IMG_SIZ
 MODEL_PATH = "models/leaf_model.h5"
 CLASSES_PATH = "models/class_names.json"
 METRICS_PATH = "models/metrics.json"
+EARLY_BLIGHT_CLASS = "Tomato___Early_blight"
+EARLY_BLIGHT_THRESHOLD = 0.30
+
+def classify_probabilities(probabilities, names):
+    predicted = np.argmax(probabilities, axis=1)
+    if EARLY_BLIGHT_CLASS in names:
+        early_index = names.index(EARLY_BLIGHT_CLASS)
+        # This validation-tuned operating point prioritizes early-blight recall over argmax.
+        predicted[probabilities[:, early_index] >= EARLY_BLIGHT_THRESHOLD] = early_index
+    return predicted
 
 def build_model(num_classes):
     base = tf.keras.applications.MobileNetV2(input_shape=IMG_SIZE + (3,), include_top=False, weights="imagenet")
@@ -29,7 +39,7 @@ def evaluate(model, test_ds, names):
     y_true, y_pred = [], []
     for x, y in test_ds:
         y_true += y.numpy().tolist()
-        y_pred += np.argmax(model.predict(x, verbose=0), axis=1).tolist()
+        y_pred += classify_probabilities(model.predict(x, verbose=0), names).tolist()
     p, r, f, _ = precision_recall_fscore_support(y_true, y_pred, average="weighted", zero_division=0)
     loss = float(model.evaluate(test_ds, verbose=0)[0])
     return {
@@ -37,7 +47,9 @@ def evaluate(model, test_ds, names):
         "recall": float(r), "f1": float(f), "loss": loss,
         "confusion_matrix": confusion_matrix(y_true, y_pred).tolist(),
         "report": classification_report(y_true, y_pred, target_names=names, output_dict=True, zero_division=0),
-        "classes": names, "trained_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "classes": names,
+        "decision_policy": {"early_blight_threshold": EARLY_BLIGHT_THRESHOLD},
+        "trained_at": time.strftime("%Y-%m-%d %H:%M:%S"),
     }
 
 def train(epochs=8, fine_tune_epochs=3, train_dir="data/train", test_dir="data/test"):

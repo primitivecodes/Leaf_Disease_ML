@@ -1,6 +1,8 @@
 """FastAPI service: health/uptime, predict, upload, retrain trigger, stats."""
+import asyncio
 import json, os, threading, time, uuid
 from fastapi import FastAPI, File, Form, UploadFile, HTTPException
+from fastapi.concurrency import run_in_threadpool
 from src.preprocessing import count_images, IMG_EXT
 from src.prediction import predict
 from src import model as M
@@ -10,6 +12,7 @@ START = time.time()
 THRESHOLD = int(os.getenv("RETRAIN_THRESHOLD", 50))   # auto-retrain trigger
 STATUS_PATH = "models/retrain_status.json"
 _lock = threading.Lock()
+_predict_lock = asyncio.Lock()
 
 def _set(state, msg=""):
     json.dump({"state": state, "message": msg, "updated": time.strftime("%Y-%m-%d %H:%M:%S")}, open(STATUS_PATH, "w"))
@@ -53,7 +56,9 @@ def metrics():
 async def predict_ep(file: UploadFile = File(...)):
     if not os.path.exists(M.MODEL_PATH):
         raise HTTPException(503, "Model not trained yet")
-    return predict(await file.read())
+    image = await file.read()
+    async with _predict_lock:
+        return await run_in_threadpool(predict, image)
 
 @app.post("/upload")
 async def upload(files: list[UploadFile] = File(...), label: str = Form(...)):

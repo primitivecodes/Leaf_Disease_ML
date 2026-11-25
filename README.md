@@ -32,31 +32,37 @@ API_URL=http://localhost:8000 streamlit run app.py   # UI at :8501
 docker compose up --build --scale api=1     # then 2, 3 ... for the comparison
 ```
 API via load balancer: http://localhost:8000 — UI: http://localhost:8501
+The API moves inference off the event loop, and Docker limits TensorFlow to one intra-op and one inter-op thread per container to avoid CPU oversubscription on shared hosts.
 
 ## Load test (Locust)
 ```bash
 # Start with the one-container stack from the Docker section above
-locust -f locust/locustfile.py --host http://localhost:8000 -u 100 -r 10 -t 60s --headless --csv results_1container
+locust -f locust/locustfile.py --host http://localhost:8000 -u 100 -r 10 -t 60s --stop-timeout 60 --headless --csv results_1container
 
 docker compose up -d --scale api=2
-docker compose restart lb
-locust -f locust/locustfile.py --host http://localhost:8000 -u 100 -r 10 -t 60s --headless --csv results_2containers
+sleep 10
+locust -f locust/locustfile.py --host http://localhost:8000 -u 100 -r 10 -t 60s --stop-timeout 60 --headless --csv results_2containers
 
 docker compose up -d --scale api=3
-docker compose restart lb
-locust -f locust/locustfile.py --host http://localhost:8000 -u 100 -r 10 -t 60s --headless --csv results_3containers
+sleep 10
+locust -f locust/locustfile.py --host http://localhost:8000 -u 100 -r 10 -t 60s --stop-timeout 60 --headless --csv results_3containers
 ```
 
+`--stop-timeout 60` lets in-flight requests finish when the 60-second run ends, instead of counting client-side shutdown resets as failures.
+Nginx now rediscovers scaled API containers through Docker DNS, so restarting the load balancer is unnecessary.
 For the live charts, run the same Locust command without `--headless` or `--csv`, then open http://localhost:8089.
 
-### Flood simulation results (laptop run)
+### Flood simulation results (corrected laptop run)
 | Containers | Users | RPS | Median (ms) | 95th % (ms) | Failures |
 |---|---|---|---|---|---|
-| 1 | 100 | 0.89 | 40,000 | 48,000 | 1 |
-| 2 | 100 | 2.01 | 26,000 | 41,000 | 14 |
-| 3 | 100 | 3.54 | 19,000 | 35,000 | 5 |
+| 1 | 100 | 1.74 | 49,000 | 65,000 | 0 |
+| 2 | 100 | 2.18 | 34,000 | 51,000 | 1 |
+| 3 | 100 | 3.13 | 25,000 | 40,000 | 42 |
 
-These runs were performed on a laptop, where the containers share CPU resources. Throughput increased with the container count in this run, but response times were high and Locust reported connection resets; treat these results as a local demonstration, not a cloud performance benchmark.
+These runs were performed on a laptop, where the containers share CPU resources. Throughput increased with container count, but not linearly. The two-container run had one upstream reset; Locust reported 42 client-side connection resets in the three-container run while nginx/API logs showed successful responses during that interval. The latter cause is unresolved, so treat these as local demonstrations, not a cloud performance benchmark.
+
+## Classification operating point
+The API uses a 0.30 probability threshold for early blight, calibrated on the training validation split to improve early-blight recall. On the 283-image held-out test set, this changed accuracy from 84.1% to 85.2%, macro F1 from 0.837 to 0.851, and early-blight recall from 60.8% to 70.3% (precision: 81.3%). The recall gain can increase false positives; the model is a screening aid, not a definitive diagnosis. Recalibrate the threshold after retraining. `/metrics` reports held-out performance using the same decision rule.
 
 ## Cloud deployment
 Push the image to a registry and run the compose stack on a VM (e.g., AWS EC2 / Azure VM / GCP Compute Engine), or use
