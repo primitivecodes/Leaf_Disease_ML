@@ -1,24 +1,43 @@
 """FastAPI service: health/uptime, predict, upload, retrain trigger, stats."""
 import asyncio
+import hmac
 import json, os, threading, time, uuid
-from fastapi import FastAPI, File, Form, UploadFile, HTTPException
+from fastapi import Depends, FastAPI, File, Form, Header, UploadFile, HTTPException
 from fastapi.concurrency import run_in_threadpool
 from src.preprocessing import count_images, IMG_EXT
 from src.prediction import predict
+from src.monitoring import production_metrics, record_feedback
 from src import model as M
 
 app = FastAPI(title="Leaf Disease Classifier")
 START = time.time()
 THRESHOLD = int(os.getenv("RETRAIN_THRESHOLD", 50))   # auto-retrain trigger
+ADMIN_API_KEY = os.getenv("ADMIN_API_KEY", "")
+REQUIRE_ADMIN_API_KEY = os.getenv("REQUIRE_ADMIN_API_KEY", "false").lower() == "true"
 STATUS_PATH = "models/retrain_status.json"
 _lock = threading.Lock()
 _predict_lock = asyncio.Lock()
 
+def require_admin_key(x_api_key: str = Header(default="")):
+    if not ADMIN_API_KEY:
+        if REQUIRE_ADMIN_API_KEY:
+            raise HTTPException(503, "Admin API key is required but not configured")
+        return
+    if not hmac.compare_digest(x_api_key, ADMIN_API_KEY):
+        raise HTTPException(401, "A valid X-API-Key is required")
+
 def _set(state, msg=""):
-    json.dump({"state": state, "message": msg, "updated": time.strftime("%Y-%m-%d %H:%M:%S")}, open(STATUS_PATH, "w"))
+    with open(STATUS_PATH, "w") as status_file:
+        json.dump(
+            {"state": state, "message": msg, "updated": time.strftime("%Y-%m-%d %H:%M:%S")},
+            status_file,
+        )
 
 def _status():
-    return json.load(open(STATUS_PATH)) if os.path.exists(STATUS_PATH) else {"state": "idle", "message": ""}
+    if not os.path.exists(STATUS_PATH):
+        return {"state": "idle", "message": ""}
+    with open(STATUS_PATH) as status_file:
+        return json.load(status_file)
 
 def _run_retrain():
     try:
@@ -50,7 +69,12 @@ def health():
 def metrics():
     if not os.path.exists(M.METRICS_PATH):
         raise HTTPException(404, "No trained model yet. Call /retrain or run src/model.py")
-    return json.load(open(M.METRICS_PATH))
+    with open(M.METRICS_PATH) as metrics_file:
+        return json.load(metrics_file)
+
+@app.get("/metrics/production")
+def production_evaluation():
+    return production_metrics()
 
 @app.post("/predict")
 async def predict_ep(file: UploadFile = File(...)):
@@ -60,11 +84,39 @@ async def predict_ep(file: UploadFile = File(...)):
     async with _predict_lock:
         return await run_in_threadpool(predict, image)
 
+@app.post("/feedback", dependencies=[Depends(require_admin_key)])
+async def feedback(file: UploadFile = File(...), label: str = Form(...)):
+    if not os.path.exists(M.MODEL_PATH):
+        raise HTTPException(503, "Model not trained yet")
+    with open(M.CLASSES_PATH) as class_file:
+        names = json.load(class_file)
+    if label not in names:
+        raise HTTPException(422, "Label must match one of the model's classes")
+    image = await file.read()
+    async with _predict_lock:
+        result = await run_in_threadpool(predict, image)
+    count = await run_in_threadpool(
+        record_feedback, label, result["label"], result["probabilities"]
+    )
+    return {
+        "recorded": True,
+        "actual_label": label,
+        "predicted_label": result["label"],
+        "production_feedback_count": count,
+    }
+
 @app.post("/upload")
-async def upload(files: list[UploadFile] = File(...), label: str = Form(...)):
+async def upload(
+    files: list[UploadFile] = File(...),
+    label: str = Form(...),
+    _admin=Depends(require_admin_key),
+):
     label = "".join(ch for ch in label if ch.isalnum() or ch in "_-")
     if not label:
         raise HTTPException(400, "Invalid label")
+    known_labels = {name for name, count in count_images("data/train").items() if count}
+    if label not in known_labels:
+        raise HTTPException(422, "Label must match an existing training class")
     d = os.path.join("data/uploads", label)
     os.makedirs(d, exist_ok=True)
     saved = 0
@@ -77,7 +129,7 @@ async def upload(files: list[UploadFile] = File(...), label: str = Form(...)):
     return {"saved": saved, "pending_total": pending, "threshold": THRESHOLD, "auto_retrain_triggered": triggered}
 
 @app.post("/retrain")
-def retrain_ep():
+def retrain_ep(_admin=Depends(require_admin_key)):
     if not start_retrain():
         raise HTTPException(409, "Retraining already running")
     return {"message": "Retraining started"}

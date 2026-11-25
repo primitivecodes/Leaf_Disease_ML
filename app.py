@@ -5,8 +5,12 @@ from PIL import Image
 import matplotlib.pyplot as plt
 
 API = os.getenv("API_URL", "http://localhost:8000")
+ADMIN_API_KEY = os.getenv("ADMIN_API_KEY", "")
 st.set_page_config(page_title="Leaf Disease ML", layout="wide")
 page = st.sidebar.radio("Menu", ["Dashboard", "Visualizations", "Predict", "Upload & Retrain"])
+
+def admin_headers():
+    return {"X-API-Key": ADMIN_API_KEY} if ADMIN_API_KEY else {}
 
 def get(path):
     try:
@@ -40,6 +44,16 @@ if page == "Dashboard":
                 ax.text(j, i, cm[i, j], ha="center", va="center")
         ax.set_xlabel("Predicted"); ax.set_ylabel("True")
         st.pyplot(fig)
+    st.subheader("Production evaluation")
+    production = get("/metrics/production")
+    if production and production["count"]:
+        st.caption(f"Based on {production['count']} predictions with submitted verified labels; updated {production['updated_at']}.")
+        cols = st.columns(5)
+        for c, k in zip(cols, ["accuracy", "precision", "recall", "f1", "macro_f1"]):
+            c.metric(k.replace("_", " ").capitalize(), round(production[k], 4))
+        st.caption("These metrics are feedback-based and separate from the held-out offline test metrics.")
+    else:
+        st.info("No labeled production feedback has been recorded yet.")
 
 elif page == "Visualizations":
     st.title("Dataset Insights")
@@ -79,28 +93,49 @@ elif page == "Predict":
     if f:
         st.image(f, width=300)
         if st.button("Predict"):
-            r = requests.post(f"{API}/predict", files={"file": (f.name, f.getvalue())})
+            r = requests.post(
+                f"{API}/predict", files={"file": (f.name, f.getvalue())}, timeout=60
+            )
             if r.ok:
-                res = r.json()
-                st.success(f"{res['label']} ({res['confidence']:.1%})")
-                st.bar_chart(pd.Series(res["probabilities"]))
+                st.session_state["last_prediction"] = r.json()
             else:
                 st.error(r.text)
+        res = st.session_state.get("last_prediction")
+        if res:
+            st.success(f"{res['label']} ({res['confidence']:.1%})")
+            st.bar_chart(pd.Series(res["probabilities"]))
+            metrics = get("/metrics")
+            classes = metrics.get("classes", []) if metrics else []
+            if classes:
+                actual_label = st.selectbox("Verified actual class (for production evaluation)", classes)
+                if st.button("Submit labeled feedback"):
+                    response = requests.post(
+                        f"{API}/feedback",
+                        files={"file": (f.name, f.getvalue())},
+                        data={"label": actual_label},
+                        headers=admin_headers(),
+                        timeout=60,
+                    )
+                    if response.ok:
+                        st.success("Feedback recorded for production evaluation.")
+                    else:
+                        st.error(response.text)
 
 else:
     st.title("Upload data & retrain")
     s = get("/data/stats")
     if s:
         st.write("Training images:", s["train"]); st.write("Pending uploads:", s["pending_uploads"])
-    label = st.text_input("Class label for these images (new labels create a new class)")
+    label = st.text_input("Existing training class label (for example Tomato___healthy)")
     files = st.file_uploader("Bulk upload images", type=["jpg", "jpeg", "png"], accept_multiple_files=True)
     if st.button("Upload") and files and label:
         r = requests.post(f"{API}/upload", data={"label": label},
-                          files=[("files", (x.name, x.getvalue())) for x in files])
-        st.json(r.json())
+                          files=[("files", (x.name, x.getvalue())) for x in files],
+                          headers=admin_headers(), timeout=120)
+        st.json(r.json() if r.headers.get("content-type", "").startswith("application/json") else {"error": r.text})
     st.divider()
     if st.button("Trigger retraining"):
-        r = requests.post(f"{API}/retrain")
+        r = requests.post(f"{API}/retrain", headers=admin_headers(), timeout=30)
         st.info(r.json().get("message", r.text) if r.ok else r.text)
     st.json(get("/retrain/status"))
     if st.button("Refresh status"):

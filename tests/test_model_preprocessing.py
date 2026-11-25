@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import patch
 
 import numpy as np
 import tensorflow as tf
@@ -8,10 +9,30 @@ from src.model import (
     EARLY_BLIGHT_THRESHOLD,
     classify_probabilities,
 )
-from src.preprocessing import IMG_SIZE, preprocess_bytes
+from src.preprocessing import IMG_SIZE, get_datasets, preprocess_bytes
 
 
 class ModelPreprocessingTests(unittest.TestCase):
+    def test_dataset_loader_rejects_mismatched_train_and_test_classes(self):
+        class Dataset:
+            def __init__(self, names):
+                self.class_names = names
+
+            def prefetch(self, _):
+                return self
+
+        datasets = [
+            Dataset(["healthy", "blight"]),
+            Dataset(["healthy", "blight"]),
+            Dataset(["blight", "healthy"]),
+        ]
+        with patch(
+            "src.preprocessing.tf.keras.utils.image_dataset_from_directory",
+            side_effect=datasets,
+        ):
+            with self.assertRaisesRegex(ValueError, "same classes"):
+                get_datasets()
+
     def test_preprocessing_matches_tensorflow_training_resize(self):
         image = np.arange(24 * 32 * 3, dtype=np.uint8).reshape((24, 32, 3))
         encoded = tf.io.encode_jpeg(image).numpy()

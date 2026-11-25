@@ -16,6 +16,10 @@ def get_datasets(train_dir="data/train", test_dir="data/test", val_split=0.2, se
     test = tf.keras.utils.image_dataset_from_directory(
         test_dir, image_size=IMG_SIZE, batch_size=BATCH, shuffle=False)
     names = train.class_names
+    if test.class_names != names:
+        raise ValueError(
+            "Training and test directories must contain the same classes in the same order"
+        )
     ac = tf.data.AUTOTUNE
     return train.prefetch(ac), val.prefetch(ac), test.prefetch(ac), names
 

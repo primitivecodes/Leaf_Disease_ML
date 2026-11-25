@@ -4,6 +4,8 @@ services:
     volumes: ["./data:/app/data", "./models:/app/models"]
     environment:
       RETRAIN_THRESHOLD: "50"
+      ADMIN_API_KEY: ${ADMIN_API_KEY:-}
+      REQUIRE_ADMIN_API_KEY: ${REQUIRE_ADMIN_API_KEY:-false}
       TF_NUM_INTRAOP_THREADS: "1"
       TF_NUM_INTEROP_THREADS: "1"
     expose: ["8000"]
@@ -16,6 +18,8 @@ services:
     build: .
     command: streamlit run app.py --server.port 8501 --server.address 0.0.0.0
     volumes: ["./data:/app/data", "./models:/app/models"]
-    environment: [API_URL=http://lb]
+    environment:
+      API_URL: http://lb
+      ADMIN_API_KEY: ${ADMIN_API_KEY:-}
     ports: ["8501:8501"]
     depends_on: [lb]
