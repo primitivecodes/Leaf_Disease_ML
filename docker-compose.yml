@@ -5,7 +5,10 @@ services:
     environment:
       RETRAIN_THRESHOLD: "50"
       ADMIN_API_KEY: ${ADMIN_API_KEY:-}
-      REQUIRE_ADMIN_API_KEY: ${REQUIRE_ADMIN_API_KEY:-false}
+      REQUIRE_ADMIN_API_KEY: ${REQUIRE_ADMIN_API_KEY:-true}
+      MAX_IMAGE_BYTES: ${MAX_IMAGE_BYTES:-10485760}
+      MAX_UPLOAD_FILES: ${MAX_UPLOAD_FILES:-100}
+      MAX_UPLOAD_TOTAL_BYTES: ${MAX_UPLOAD_TOTAL_BYTES:-52428800}
       TF_NUM_INTRAOP_THREADS: "1"
       TF_NUM_INTEROP_THREADS: "1"
     expose: ["8000"]
@@ -21,5 +24,7 @@ services:
     environment:
       API_URL: http://lb
       ADMIN_API_KEY: ${ADMIN_API_KEY:-}
+      UI_USERNAME: ${UI_USERNAME:-}
+      UI_PASSWORD: ${UI_PASSWORD:-}
     ports: ["8501:8501"]
     depends_on: [lb]

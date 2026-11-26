@@ -1,12 +1,39 @@
 """Streamlit UI: uptime, visualizations, predict, upload, train/retrain."""
-import os, time, random
+import hashlib, hmac, os, time, random
 import numpy as np, pandas as pd, requests, streamlit as st
 from PIL import Image
 import matplotlib.pyplot as plt
 
 API = os.getenv("API_URL", "http://localhost:8000")
 ADMIN_API_KEY = os.getenv("ADMIN_API_KEY", "")
+UI_USERNAME = os.getenv("UI_USERNAME", "")
+UI_PASSWORD = os.getenv("UI_PASSWORD", "")
 st.set_page_config(page_title="Leaf Disease ML", layout="wide")
+
+def require_ui_login():
+    if not UI_USERNAME or not UI_PASSWORD:
+        st.error("UI login is not configured. Set UI_USERNAME and UI_PASSWORD before starting Streamlit.")
+        st.stop()
+    if st.session_state.get("ui_authenticated"):
+        if st.sidebar.button("Log out"):
+            st.session_state.pop("ui_authenticated", None)
+            st.rerun()
+        return
+    st.title("Leaf Disease ML — Sign in")
+    with st.form("ui_login"):
+        username = st.text_input("Username")
+        password = st.text_input("Password", type="password")
+        submitted = st.form_submit_button("Sign in")
+    if submitted:
+        valid_user = hmac.compare_digest(username.encode(), UI_USERNAME.encode())
+        valid_password = hmac.compare_digest(password.encode(), UI_PASSWORD.encode())
+        if valid_user and valid_password:
+            st.session_state["ui_authenticated"] = True
+            st.rerun()
+        st.error("Incorrect username or password")
+    st.stop()
+
+require_ui_login()
 page = st.sidebar.radio("Menu", ["Dashboard", "Visualizations", "Predict", "Upload & Retrain"])
 
 def admin_headers():
@@ -64,7 +91,7 @@ elif page == "Visualizations":
         st.warning("No training data found.")
     else:
         @st.cache_data
-        def features(classes):
+        def features(classes, directory_versions):
             rows = []
             for c in classes:
                 files = [f for f in os.listdir(f"{root}/{c}") if f.lower().endswith((".jpg", ".jpeg", ".png"))]
@@ -74,7 +101,10 @@ elif page == "Visualizations":
                     rows.append({"class": c, "R": r, "G": g, "B": b, "brightness": a.mean(),
                                  "green_ratio": g / (r + g + b + 1e-9), "total_files": len(files)})
             return pd.DataFrame(rows)
-        df = features(tuple(classes))
+        directory_versions = tuple(
+            (c, os.stat(os.path.join(root, c)).st_mtime_ns) for c in classes
+        )
+        df = features(tuple(classes), directory_versions)
         counts = df.groupby("class")["total_files"].first()
         st.subheader("1. Class distribution"); st.bar_chart(counts)
         st.markdown("**Story:** shows whether classes are balanced. Imbalance biases the model toward majority classes, so use per-class recall/F1, not just accuracy.")
@@ -92,26 +122,34 @@ elif page == "Predict":
     f = st.file_uploader("Upload a leaf image", type=["jpg", "jpeg", "png"])
     if f:
         st.image(f, width=300)
+        image_bytes = f.getvalue()
+        image_id = hashlib.sha256(image_bytes).hexdigest()
         if st.button("Predict"):
             r = requests.post(
-                f"{API}/predict", files={"file": (f.name, f.getvalue())}, timeout=60
+                f"{API}/predict", files={"file": (f.name, image_bytes)}, timeout=60
             )
             if r.ok:
-                st.session_state["last_prediction"] = r.json()
+                st.session_state["last_prediction"] = {"image_id": image_id, "result": r.json()}
             else:
                 st.error(r.text)
-        res = st.session_state.get("last_prediction")
+        saved = st.session_state.get("last_prediction", {})
+        res = saved.get("result") if saved.get("image_id") == image_id else None
         if res:
             st.success(f"{res['label']} ({res['confidence']:.1%})")
             st.bar_chart(pd.Series(res["probabilities"]))
             metrics = get("/metrics")
             classes = metrics.get("classes", []) if metrics else []
             if classes:
-                actual_label = st.selectbox("Verified actual class (for production evaluation)", classes)
-                if st.button("Submit labeled feedback"):
+                actual_label = st.selectbox(
+                    "Verified actual class (for production evaluation)",
+                    classes,
+                    index=None,
+                    placeholder="Choose the verified class",
+                )
+                if st.button("Submit labeled feedback", disabled=actual_label is None):
                     response = requests.post(
                         f"{API}/feedback",
-                        files={"file": (f.name, f.getvalue())},
+                        files={"file": (f.name, image_bytes)},
                         data={"label": actual_label},
                         headers=admin_headers(),
                         timeout=60,

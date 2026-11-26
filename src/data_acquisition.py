@@ -44,6 +44,7 @@ def _export_cached_images(source_dir, per_class, test_frac, out):
     print("Saved:", counts)
 
 def acquire(per_class=400, test_frac=0.2, out="data"):
+    rng = random.Random(42)
     source_dir = _cached_plant_village_root()
     if source_dir is not None:
         _export_cached_images(source_dir, per_class, test_frac, out)
@@ -72,7 +73,7 @@ def acquire(per_class=400, test_frac=0.2, out="data"):
             if all(v >= per_class for v in counts.values()):
                 break
             continue
-        split = "test" if random.random() < test_frac else "train"
+        split = "test" if rng.random() < test_frac else "train"
         d = os.path.join(out, split, c)
         os.makedirs(d, exist_ok=True)
         Image.fromarray(img).resize((256, 256)).save(os.path.join(d, f"{c}_{counts[c]}.jpg"))

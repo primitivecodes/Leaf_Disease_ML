@@ -1,3 +1,10 @@
 .git/
 .env
 data/tfds/
+data/
+models/
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+results_*.csv

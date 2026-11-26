@@ -1,9 +1,11 @@
 import json
+import io
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from PIL import Image
 from fastapi.testclient import TestClient
 
 from src.api import app
@@ -39,7 +41,9 @@ class ProductionFeedbackApiTests(unittest.TestCase):
                 ),
             ):
                 client = TestClient(app)
-                files = {"file": ("leaf.jpg", b"test-image", "image/jpeg")}
+                image = io.BytesIO()
+                Image.new("RGB", (8, 8), (40, 120, 50)).save(image, format="JPEG")
+                files = {"file": ("leaf.jpg", image.getvalue(), "image/jpeg")}
                 data = {"label": "healthy"}
 
                 denied = client.post("/feedback", files=files, data=data)

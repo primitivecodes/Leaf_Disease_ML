@@ -33,7 +33,7 @@ From the repository root:
 ```powershell
 git clone https://github.com/primitivecodes/Leaf_Disease_ML.git
 Set-Location Leaf_Disease_ML
-py -3.10 -m venv .venv
+py -3.11 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
 python -m src.data_acquisition
@@ -48,10 +48,12 @@ uvicorn src.api:app --host 0.0.0.0 --port 8000
 
 ```powershell
 $env:API_URL = "http://localhost:8000"
+$env:UI_USERNAME = "demo"
+$env:UI_PASSWORD = "change-this-password"
 streamlit run app.py
 ```
 
-The dashboard is at `http://localhost:8501`; FastAPI documentation is at `http://localhost:8000/docs`. The notebook walks through acquisition, preprocessing, visualization, model training, testing, and single-image prediction.
+The dashboard is at `http://localhost:8501`; sign in with the configured UI credentials. FastAPI documentation is at `http://localhost:8000/docs`. The notebook walks through acquisition, preprocessing, visualization, model training, testing, and single-image prediction.
 
 ## Prediction, feedback, and retraining
 
@@ -64,15 +66,20 @@ The dashboard is at `http://localhost:8501`; FastAPI documentation is at `http:/
 
 The dashboard separates held-out offline test metrics from feedback-based production metrics. Production metrics remain empty until users submit verified labels; predictions alone are not treated as ground truth. Feedback and image uploads are persisted under `data/`.
 
-For local use, write endpoints work without a key. Set `ADMIN_API_KEY` and `REQUIRE_ADMIN_API_KEY=true` before exposing the service; these protect feedback, upload, and retraining endpoints. Never commit the `.env` file.
+When running the API directly for local development, write endpoints work without a key by default. Compose enables admin-key enforcement by default. Set `ADMIN_API_KEY`, `UI_USERNAME`, and `UI_PASSWORD` in an untracked `.env` file before using Compose; the UI login protects the shared admin access it uses for uploads, feedback, and retraining. Never expose the UI or API over an untrusted network without HTTPS and appropriate network restrictions. Never commit the `.env` file.
 
 ## Docker Compose and load testing
 
 ```powershell
+@"
+ADMIN_API_KEY=$(python -c "import secrets; print(secrets.token_hex(32))")
+UI_USERNAME=demo
+UI_PASSWORD=replace-with-a-long-random-password
+"@ | Set-Content -NoNewline .env
 docker compose up --build --scale api=1
 ```
 
-The API is behind nginx on port `8000`; the UI is on `8501`. Compose mounts `data/` and `models/` so feedback, uploaded images, and trained artifacts persist on the host. Scale the API with `docker compose up -d --scale api=2` (or `3`).
+The API is behind nginx on port `8000`; the UI is on `8501`. Compose mounts `data/` and `models/` so feedback, uploaded images, and trained artifacts persist on the host. Retraining is protected by a file lock on the shared models volume. Scale the API with `docker compose up -d --scale api=2` (or `3`).
 
 Run Locust from the repository root for each scale, saving separate CSV reports:
 
@@ -108,7 +115,7 @@ This project uses host-mounted directories for the model, datasets, and feedback
    sudo apt-get update
    sudo apt-get install -y docker.io docker-compose-v2
    sudo systemctl enable --now docker
-   printf 'ADMIN_API_KEY=%s\nREQUIRE_ADMIN_API_KEY=true\n' "$(openssl rand -hex 32)" > .env
+   printf 'ADMIN_API_KEY=%s\nREQUIRE_ADMIN_API_KEY=true\nUI_USERNAME=admin\nUI_PASSWORD=%s\n' "$(openssl rand -hex 32)" "$(openssl rand -hex 32)" > .env
    chmod 600 .env
    sudo docker compose up -d --build --scale api=1
    ```
@@ -120,4 +127,4 @@ The repository does not currently include a live EC2 URL or cloud-run results: t
 
 ## Model evaluation
 
-The notebook and `models/metrics.json` report held-out results on 283 images. With the 0.30 early-blight probability threshold, accuracy was 86.6%, weighted F1 was 0.863, and macro F1 was 0.865. Compared with argmax, the threshold increased accuracy from 84.1% to 86.6%, macro F1 from 0.837 to 0.865, and early-blight recall from 62.2% to 78.4%; early-blight precision was 84.1%. This operating point can increase false positives, so treat predictions as a screening aid, not a diagnosis. Retrain and re-evaluate before relying on the model after new data is merged.
+Each training run selects the early-blight probability threshold by maximizing macro F1 on the validation split, then evaluates that fixed threshold once on the held-out test split. The selected threshold is saved with the metrics and reused by API predictions. The current model metrics report held-out results on 283 images: accuracy 87.6%, weighted F1 0.875, and macro F1 0.876 at threshold 0.30. Early-blight precision is 82.2% and recall is 81.1%. This operating point can increase false positives, so treat predictions as a screening aid, not a diagnosis. Retrain and re-evaluate before relying on the model after new data is merged.

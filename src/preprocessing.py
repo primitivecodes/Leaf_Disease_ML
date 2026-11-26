@@ -32,7 +32,10 @@ def augmentation():
 
 def preprocess_bytes(data: bytes):
     """Raw image bytes -> model-ready batch (1, H, W, 3). Scaling is done inside the model."""
-    img = tf.io.decode_image(data, channels=3, expand_animations=False)
+    try:
+        img = tf.io.decode_image(data, channels=3, expand_animations=False)
+    except tf.errors.InvalidArgumentError as exc:
+        raise ValueError("Invalid or unsupported image bytes") from exc
     img = tf.image.resize(img, IMG_SIZE, method="bilinear")
     return tf.expand_dims(img, 0).numpy()
 
