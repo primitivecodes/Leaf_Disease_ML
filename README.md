@@ -3,7 +3,7 @@
 An end-to-end image classification project for healthy tomato leaves, early blight, late blight, and leaf mold. It uses MobileNetV2 transfer learning and includes data acquisition, preprocessing, training, offline evaluation, prediction, labeled production feedback, retraining, a Streamlit dashboard, Docker Compose scaling, and Locust load tests.
 
 **GitHub:** [primitivecodes/Leaf_Disease_ML](https://github.com/primitivecodes/Leaf_Disease_ML)
-**Video demo:** Not published yet. Add the YouTube URL after recording the demo.
+**Video demo:** The YouTube link is available in this [Google Drive folder](https://drive.google.com/drive/folders/1w8x65xQaZCNr13dks_heT5qSif6pEgTm?usp=sharing).
 **Live deployment:** Not deployed yet. Follow the EC2 instructions below to create one; the local Docker UI is `http://localhost:8501`.
 
 ## Project layout
