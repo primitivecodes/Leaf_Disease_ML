@@ -91,7 +91,7 @@ docker compose up -d --scale api=3
 locust -f locust/locustfile.py --host http://localhost:8000 -u 100 -r 10 -t 60s --stop-timeout 60 --headless --csv results_3containers
 ```
 
-### Recorded laptop load-test results
+### Previously recorded laptop load-test results
 
 | API containers | Users | Throughput (requests/s) | Median (ms) | P95 (ms) | Failures |
 |---:|---:|---:|---:|---:|---:|
@@ -99,7 +99,11 @@ locust -f locust/locustfile.py --host http://localhost:8000 -u 100 -r 10 -t 60s 
 | 2 | 100 | 2.18 | 34,000 | 51,000 | 1 |
 | 3 | 100 | 3.13 | 25,000 | 40,000 | 42 |
 
-These are local laptop measurements, not cloud benchmarks. Throughput rose with container count but not linearly. The three-container run had 36 failed prediction requests and 6 failed health checks; investigate the connection resets before using these results to claim reliable scaling. The raw Locust reports are `results_{1container,2containers,3containers}_stats.csv` and corresponding history/exception/failure CSVs.
+These are historical local laptop measurements, not cloud benchmarks. The three-container run had 36 failed prediction requests and 6 failed health checks. They were recorded before the current model-serving changes and should not be treated as results for the current image. The raw reports are `results_{1container,2containers,3containers}_stats.csv` and corresponding history/exception/failure CSVs.
+
+### Current-image retest
+
+After rebuilding the current source, a repeat 60-second run with 100 users and three API containers completed 567 requests with no Locust failures. Throughput was 7.61 requests/s, median latency was 10,000 ms, and P95 latency was 19,000 ms. This is one local retest, not a cloud benchmark; the zero-failure result does not make the high latency acceptable for production. Re-run all three replica counts on the same rebuilt image and hardware before comparing scaling.
 
 ## AWS EC2 deployment
 
